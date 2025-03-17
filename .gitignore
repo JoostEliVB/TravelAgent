@@ -1,5 +1,7 @@
 .idea
 .env
+HREC_Checklist_CAversion.docx
+output.wav
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

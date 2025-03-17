@@ -102,12 +102,21 @@ def recognize_emotion(text):
 
 
 if __name__ == "__main__":
-    # Record until silence is detected
-    audio, fs = record_until_silence()
-    # Save the audio to a file
-    save_audio("output.wav", audio, fs)
-    # Transcribe the recorded audio
-    transcription = speech_to_text_from_file("output.wav")
-    # If transcription is successful, perform emotion recognition on the text
-    if transcription:
-        recognize_emotion(transcription)
+    # # Record until silence is detected
+    # audio, fs = record_until_silence()
+    # # Save the audio to a file
+    # save_audio("output.wav", audio, fs)
+    # # Transcribe the recorded audio
+    # transcription = speech_to_text_from_file("output.wav")
+    # # If transcription is successful, perform emotion recognition on the text
+    # if transcription:
+    #     recognize_emotion(transcription)
+    #
+    #
+    recognize_emotion("I like to go to the beach, but dislike the mountains")
+    # recognize_emotion("I really like to go to the beach")
+    # recognize_emotion("I hate to go to the beach")
+    # recognize_emotion("I really hate to go to the beach")
+    # recognize_emotion("Are you going to the beach?")
+    # recognize_emotion("I like to go to the mountains")
+    # recognize_emotion("I am in love with the beach")
