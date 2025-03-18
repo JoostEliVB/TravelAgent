@@ -10,7 +10,7 @@ import speech_recognition as sr
 from transformers import pipeline, Wav2Vec2FeatureExtractor, HubertForSequenceClassification
 
 
-def record_until_silence(fs=16000, threshold=500, silence_duration=5.0, max_recording=30.0):
+def record_until_silence(fs=16000, threshold=500, silence_duration=1.0, max_recording=30.0):
     """
     Records audio from the microphone until a period of silence is detected.
 
