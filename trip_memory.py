@@ -475,7 +475,7 @@ class TripMemory:
 
     def collect_past_trips(self):
         """Main method to collect user preferences through conversational interaction"""
-        # Track what we've specifically asked about to avoid repetition
+        # Track what information we've asked about
         asked_about = {
             'activities': False,
             'travel_styles': False,
@@ -483,41 +483,51 @@ class TripMemory:
             'budget_level': False
         }
         
-        # More directed system prompt
+        # Initial prompt setting expectations for concise responses
         system_prompt = """
-        You are a friendly, conversational travel advisor chatbot. Your goal is to learn about the user's
-        travel preferences by discussing their past trips and experiences.
+        You are a travel advisor helping users plan trips. You need to gather their preferences efficiently.
         
-        Start the conversation by directly asking about a memorable trip they've taken.
+        KEEP ALL RESPONSES SHORT AND DIRECT - 2-3 SENTENCES MAXIMUM.
         
-        IMPORTANT: For each response you give:
-        1. First acknowledge what the user just shared
-        2. Then respond to their specific points with interest
-        3. Finally, ask a question about ONE specific aspect of travel preferences that hasn't been covered yet
+        For each response:
+        1. Briefly acknowledge what they said (1 short sentence)
+        2. Ask ONE specific question about missing information
         
-        Keep the conversation flowing naturally while ensuring you gather all needed information about:
+        You need to collect:
         - Activities they enjoy (explore, swim, relax, eat, etc.)
-        - Travel style (busy/relaxed, cultural/adventure)
+        - Travel style (busy vs relaxed, cultural vs adventure)
         - Climate preferences (tropical, moderate, cold)
         - Budget level (budget, moderate, luxury)
-        
-        Ask for their name naturally during the conversation if they haven't shared it.
         """
         
-        # Create initial message about past trips
-        initial_messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content="Start the conversation by asking about a past trip")
+        # First message: Ask for user's name
+        self.typing_effect("Hi there! I'm your travel advisor. What's your name?")
+        
+        # Get user's name
+        name_input = input("➡️ ").strip()
+        
+        # Try to extract name
+        potential_name = self.extract_name(name_input)
+        self.user_name = potential_name if potential_name else name_input
+        
+        # Start conversation history with this exchange
+        self.messages_history = [
+            AIMessage(content="Hi there! I'm your travel advisor. What's your name?"),
+            HumanMessage(content=name_input)
         ]
         
-        initial_response = self.llm.invoke(initial_messages)
+        # Second message: Ask about past trips
+        second_prompt = f"Great to meet you, {self.user_name}! Could you tell me about a memorable trip you've taken?"
+        self.typing_effect(second_prompt)
         
-        self.typing_effect(initial_response.content)
-        # Store only the assistant's response in history
-        self.messages_history.append(AIMessage(content=initial_response.content))
+        # Update conversation history
+        self.messages_history.append(AIMessage(content=second_prompt))
+        
+        # Set name as collected
+        self.information_collected['name'] = True
         
         # Continue conversation until we have all required information
-        max_turns = 15  # Increased to allow for more dialogue
+        max_turns = 15
         turns = 0
         
         while not self.check_information_completeness() and turns < max_turns:
@@ -526,7 +536,7 @@ class TripMemory:
             
             # Check for conversation exit
             if user_input.lower() in ["exit", "quit", "bye"]:
-                self.typing_effect("It was great chatting about your travel experiences! I've gathered some insights about your preferences.")
+                self.typing_effect(f"Thanks for sharing, {self.user_name}! I've noted your preferences.")
                 break
                 
             # Add to conversation history
@@ -539,13 +549,7 @@ class TripMemory:
             if new_preferences:
                 self.update_preferences(new_preferences)
             
-            # Check for name if we don't have it yet
-            if not self.user_name:
-                potential_name = self.extract_name(user_input)
-                if potential_name:
-                    self.user_name = potential_name
-            
-            # Determine what information is still missing and what to ask about next
+            # Determine what information is still missing
             missing_categories = []
             for category, collected in self.information_collected.items():
                 if not collected and category != 'name':
@@ -569,24 +573,26 @@ class TripMemory:
             if next_category is None and missing_categories:
                 next_category = missing_categories[0]
             
-            # Create guidance based on what's missing
-            guidance = ""
-            if next_category:
-                if next_category == 'activities':
-                    guidance = "First respond to what they shared, then ask specifically about what activities they enjoy most when traveling (like exploring, swimming, hiking, eating, etc.)."
-                elif next_category == 'travel_styles':
-                    guidance = "First respond to what they shared, then ask about their preferred travel style - whether they like busy/packed itineraries or relaxed pace, cultural immersion or adventure activities."
-                elif next_category == 'climate_preference':
-                    guidance = "First respond to what they shared, then ask about what climate or weather they prefer when traveling (tropical, moderate, cold)."
-                elif next_category == 'budget_level':
-                    guidance = "First respond to what they shared, then ask about their typical travel budget or spending preferences (budget, moderate, luxury)."
+            # Create focused, direct guidance
+            if next_category == 'activities':
+                guidance = "Briefly acknowledge their response, then ask DIRECTLY about activities they enjoy during travel."
+            elif next_category == 'travel_styles':
+                guidance = "Briefly acknowledge their response, then ask DIRECTLY if they prefer busy or relaxed travel pace."
+            elif next_category == 'climate_preference':
+                guidance = "Briefly acknowledge their response, then ask DIRECTLY about preferred climate (tropical, moderate, cold)."
+            elif next_category == 'budget_level':
+                guidance = "Briefly acknowledge their response, then ask DIRECTLY about their budget level when traveling."
+            else:
+                guidance = "Briefly acknowledge their response, then ask a follow-up question about their travel preferences."
             
-            # Generate response with focused guidance
+            # Generate concise response
             guidance_message = SystemMessage(content=f"""
-            Respond to the user's message naturally. {guidance}
+            KEEP YOUR RESPONSE VERY BRIEF (2-3 SENTENCES MAXIMUM).
             
-            Make your transition to the new topic smooth and conversational.
-            Be specific in your questions to get clear preference information.
+            {guidance}
+            
+            Do not write lengthy responses. Be conversational but direct.
+            Use their name ({self.user_name}) occasionally to personalize.
             """)
             
             temp_messages = self.messages_history.copy()
@@ -598,18 +604,19 @@ class TripMemory:
             
             turns += 1
         
-        # Final summary of what we've learned
-        if self.user_name:
-            summary_instruction = f"Summarize what you've learned about {self.user_name}'s travel preferences in a friendly way. Be specific about their activities, travel style, climate preference, and budget level."
-        else:
-            summary_instruction = "Summarize what you've learned about the user's travel preferences in a friendly way. Be specific about their activities, travel style, climate preference, and budget level."
+        # Final brief summary
+        summary_instruction = f"Give a VERY BRIEF summary of {self.user_name}'s travel preferences (2-3 sentences maximum)."
         
         summary_messages = self.messages_history.copy()
         summary_messages.append(HumanMessage(content=summary_instruction))
+        
+        guidance_message = SystemMessage(content="Keep your summary extremely brief and focused only on their preferences.")
+        summary_messages.insert(0, guidance_message)
+        
         summary = self.llm.invoke(summary_messages)
         self.typing_effect(summary.content)
         
-        return self.user_preferences, self.user_name or "traveler"
+        return self.user_preferences, self.user_name
 
     def summarize_preferences(self):
         print(f"\nTravel Profile for {self.user_name}")
