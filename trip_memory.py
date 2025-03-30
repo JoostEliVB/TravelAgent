@@ -10,13 +10,14 @@ import os
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from typing import Dict, List, Any
-from database import TravelDatabase
+from trip_database import TripDatabase
+
 
 class TravelAgent:
     def __init__(self):
         # Initialize conversation LLM (llama) for basic interaction
         self.conversation_llm = ChatOllama(
-            model="llama3.2",
+            model="llama3.2:latest",
             temperature=0.7,
             system="""You are a travel assistant. Extract travel details from user input.
             Return ONLY a JSON with time_period, companions, and budget (or null if not mentioned)."""
@@ -24,16 +25,29 @@ class TravelAgent:
         
         # Initialize recommendation LLM (deepseek) for suggestions
         self.recommendation_llm = ChatOllama(
-            model="deepseek-r1:7b",
+            model="llama3.2:latest",
             temperature=0.8,
             system="You are a travel advisor. Respond with destination recommendations in format: CityName, Country: One-line description"
         )
+        
+        # Initialize trip memory database
+        self.trip_db = TripDatabase()
         
         # Store trip details
         self.trip_details = {
             'time_period': None,
             'companions': None,
             'budget': None
+        }
+        
+        # Store current user's name
+        self.current_user = None
+        
+        # Store user preferences
+        self.user_preferences = {
+            'activities': [],
+            'climate': [],
+            'travel_style': []
         }
 
     def start_conversation(self):
@@ -42,10 +56,10 @@ class TravelAgent:
         self.typing_effect("Hi there! 👋 I'm your friendly travel companion, and I'd love to help you plan your perfect getaway. What should I call you?")
         
         user_response = input("➡️ ").strip()
-        name = self.extract_name(user_response)
+        self.current_user = self.extract_name(user_response)
         
         # Collect basic trip details
-        self.typing_effect(f"""Lovely to meet you, {name}! 🌟 
+        self.typing_effect(f"""Lovely to meet you, {self.current_user}! 🌟 
 Let's plan your perfect trip. Please tell me:
 • When you'd like to travel
 • Who you'll be traveling with
@@ -139,10 +153,8 @@ Let's plan your perfect trip. Please tell me:
         try:
             response = self.recommendation_llm.invoke([HumanMessage(content=prompt)])
             self.typing_effect(f"\n✨ {response.content.strip()}")
-            self.typing_effect("\nWould you like to tell me about your past trips so I can give you more personalized suggestions?")
         except Exception:
             self.typing_effect("\n✨ Barcelona, Spain: Vibrant city with perfect blend of culture, cuisine, and beaches.")
-            self.typing_effect("\nWould you like to tell me about your past trips so I can give you more personalized suggestions?")
 
     def collect_preferences(self):
         """Collect user preferences through natural conversation"""
@@ -153,7 +165,6 @@ Let's plan your perfect trip. Please tell me:
             return
         
         # First trip conversation
-        self.typing_effect("Tell me about a memorable trip you've taken - where did you go?")
         self.have_trip_conversation()
         
         # Second trip conversation
@@ -162,19 +173,95 @@ Let's plan your perfect trip. Please tell me:
 
     def have_trip_conversation(self):
         """Have a natural conversation about a past trip"""
-        destination = input("➡️ ").strip()
+        # Get existing trips for the user
+        existing_destinations, existing_activities = self.trip_db.get_user_trips(self.current_user)
+        
+        # Collect all responses for this trip conversation
+        responses = []
+        
+        # Get and validate destination
+        while True:
+            self.typing_effect("Tell me about a memorable trip you've taken - where did you go?")
+            user_input = input("➡️ ").strip()
+            responses.append(user_input)
+            
+            # Use LLM to validate and extract destination
+            destination_info = self.validate_and_extract_destination(user_input)
+            
+            if destination_info['is_valid']:
+                destination = destination_info['destination']
+                break
+            else:
+                self.typing_effect(destination_info['clarification_request'])
         
         # Generate follow-up questions based on the destination
         questions = self.generate_follow_up_questions(destination)
         preferences = {}
         
+        # Store activities for this destination
+        destination_activities = []
+        
         for question in questions:
             self.typing_effect(question)
             response = input("➡️ ").strip()
+            responses.append(response)
             
-            # Analyze response and update preferences
+            # Analyze response and collect activities
             new_prefs = self.analyze_response(response)
-            self.update_preferences(new_prefs)
+            if new_prefs['activities']:
+                destination_activities.extend(new_prefs['activities'])
+
+        
+        # Update database with new trip information
+        if destination:
+            existing_destinations.append(destination)
+            existing_activities.extend(destination_activities)
+            self.trip_db.update_user_trips(self.current_user, existing_destinations, existing_activities)
+
+    def validate_and_extract_destination(self, user_input: str) -> Dict[str, Any]:
+        """Validate user input and extract destination using LLM"""
+        prompt = f"""Extract a clear destination from: '{user_input}'
+
+        Rules:
+        1. If input contains a clear city/country, return it in format: "City, Country"
+        2. If destination is unclear, return exactly "FALSE"
+
+        Examples:
+        "I went to Paris" -> "Paris, France"
+        "I visited a city in Europe" -> "FALSE"
+        "I went to the beach" -> "FALSE"
+        "We explored Tokyo last summer" -> "Tokyo, Japan"
+        "I stayed home" -> "FALSE"
+        """
+        
+        try:
+            response = self.conversation_llm.invoke([
+                SystemMessage(content="You are a destination extractor. Return ONLY the destination or FALSE."),
+                HumanMessage(content=prompt)
+            ])
+            
+            result = response.content.strip()
+            
+            # Convert response to expected dictionary format
+            if result == "FALSE":
+                return {
+                    'is_valid': False,
+                    'destination': None,
+                    'clarification_request': "Could you please specify a clear destination (city and country)?"
+                }
+            else:
+                return {
+                    'is_valid': True,
+                    'destination': result,
+                    'clarification_request': None
+                }
+            
+        except Exception:
+            return {
+                'is_valid': False,
+                'destination': None,
+                'clarification_request': "I'm not sure about the destination. Could you please specify where you went?"
+            }
 
     def generate_follow_up_questions(self, destination: str) -> list:
         """Generate contextual follow-up questions"""
@@ -207,21 +294,26 @@ Let's plan your perfect trip. Please tell me:
         """Analyze a single response for preferences"""
         analysis_prompt = f"""Analyze this response: '{response}'
         
-        Extract preferences about:
-        1. Activities they enjoy
-        2. Climate/weather they prefer
-        3. Travel style
-        
-        Return ONLY a JSON object:
+        Return ONLY a JSON object with three sentences:
         {{
-            "activities": ["activity1", "activity2"],
-            "climate": ["climate1", "climate2"],
-            "travel_style": ["style1", "style2"]
-        }}"""
+            "activities": "A sentence about activities they enjoyed",
+            "climate": "A sentence about climate/weather they preferred",
+            "travel_style": "A sentence about their travel style"
+        }}
+
+        If any aspect is unclear, use "This information is unclear." for that field.
+
+        Example output:
+        {{
+            "activities": "They enjoyed hiking in the mountains and visiting local markets",
+            "climate": "The weather was warm and sunny which they loved",
+            "travel_style": "This information is unclear"
+        }}
+        """
         
         try:
             response = self.conversation_llm.invoke([
-                SystemMessage(content="You are a preference analyzer. Extract specific preferences from the response."),
+                SystemMessage(content="You are a preference analyzer. Return a JSON object with three sentences."),
                 HumanMessage(content=analysis_prompt)
             ])
             
@@ -231,7 +323,14 @@ Let's plan your perfect trip. Please tell me:
             if content.startswith('json'):
                 content = content[4:]
             
-            return json.loads(content.strip())
+            result = json.loads(content.strip())
+            
+            # Convert sentences to lists for compatibility
+            return {
+                'activities': [result['activities']] if result['activities'] != "This information is unclear" else [],
+                'climate': [result['climate']] if result['climate'] != "This information is unclear" else [],
+                'travel_style': [result['travel_style']] if result['travel_style'] != "This information is unclear" else []
+            }
         except Exception:
             return {'activities': [], 'climate': [], 'travel_style': []}
 
@@ -302,6 +401,7 @@ Let's plan your perfect trip. Please tell me:
             
         except Exception:
             return "friend"
+
 
 # Run the agent
 if __name__ == "__main__":
