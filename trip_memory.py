@@ -170,20 +170,16 @@ Let's plan your perfect trip. Please tell me:
         # Second trip conversation
         self.typing_effect("\nHow about another trip? Where else have you traveled that you really enjoyed?")
         self.have_trip_conversation()
+        
+        # Generate recommendation based on stored trip history
+        self.generate_trip_recommendation()
 
     def have_trip_conversation(self):
         """Have a natural conversation about a past trip"""
-        # Get existing trips for the user
-        existing_destinations, existing_activities = self.trip_db.get_user_trips(self.current_user)
-        
-        # Collect all responses for this trip conversation
-        responses = []
-        
         # Get and validate destination
         while True:
             self.typing_effect("Tell me about a memorable trip you've taken - where did you go?")
             user_input = input("➡️ ").strip()
-            responses.append(user_input)
             
             # Use LLM to validate and extract destination
             destination_info = self.validate_and_extract_destination(user_input)
@@ -204,7 +200,6 @@ Let's plan your perfect trip. Please tell me:
         for question in questions:
             self.typing_effect(question)
             response = input("➡️ ").strip()
-            responses.append(response)
             
             # Analyze response and collect activities
             new_prefs = self.analyze_response(response)
@@ -214,9 +209,8 @@ Let's plan your perfect trip. Please tell me:
         
         # Update database with new trip information
         if destination:
-            existing_destinations.append(destination)
-            existing_activities.extend(destination_activities)
-            self.trip_db.update_user_trips(self.current_user, existing_destinations, existing_activities)
+            self.trip_db.update_user_trips(self.current_user, [destination], destination_activities)
+
 
     def validate_and_extract_destination(self, user_input: str) -> Dict[str, Any]:
         """Validate user input and extract destination using LLM"""
@@ -262,7 +256,7 @@ Let's plan your perfect trip. Please tell me:
                 'destination': None,
                 'clarification_request': "I'm not sure about the destination. Could you please specify where you went?"
             }
-
+        
     def generate_follow_up_questions(self, destination: str) -> list:
         """Generate contextual follow-up questions"""
         prompt = f"""Generate 3 natural follow-up questions about their trip to {destination}.
@@ -360,6 +354,40 @@ Let's plan your perfect trip. Please tell me:
         except Exception:
             self.typing_effect("\n✨ Kyoto, Japan: Cultural destination with perfect blend of traditional experiences and modern comfort.")
 
+    def generate_trip_recommendation(self):
+        """Generate recommendation based on user's trip history"""
+        # Get user's trip history from database
+        destinations, activities = self.trip_db.get_user_trips(self.current_user)
+        
+        if not destinations:
+            return
+        
+        self.typing_effect("\nBased on your travel history, I think you might enjoy this destination...")
+        
+        prompt = f"""Recommend ONE destination considering:
+        User's Past Trips:
+        - Destinations: {', '.join(destinations)}
+        - Activities: {', '.join(activities)}
+        
+        Current Trip Details:
+        - Time: {self.trip_details['time_period']}
+        - Group: {self.trip_details['companions']}
+        - Budget: {self.trip_details['budget']}
+        
+        Response format: CityName, Country: One-line description
+        
+        Rules:
+        1. Do NOT recommend any of their past destinations
+        2. Choose a destination that would allow similar activities
+        3. Consider their current trip details
+        """
+        
+        try:
+            response = self.recommendation_llm.invoke([HumanMessage(content=prompt)])
+            self.typing_effect(f"\n✨ {response.content.strip()}")
+        except Exception:
+            self.typing_effect("\n✨ Kyoto, Japan: Cultural destination with perfect blend of traditional experiences and modern comfort.")
+
     def typing_effect(self, text):
         """Print with typing effect"""
         print()
@@ -401,7 +429,6 @@ Let's plan your perfect trip. Please tell me:
             
         except Exception:
             return "friend"
-
 
 # Run the agent
 if __name__ == "__main__":
