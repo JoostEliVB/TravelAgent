@@ -54,12 +54,8 @@ class TravelAgent:
     def start_conversation(self):
         """Start the conversation and collect all information"""
         # Initial greeting and name collection
-        self.typing_effect("Hi there! 👋 I'm your friendly travel companion, and I'd love to help you plan your perfect getaway. What should I call you? (Type 'exit' at any time to end our conversation)")
+        self.typing_effect("Hi there! 👋 I'm your friendly travel companion, and I'd love to help you plan your perfect getaway. What should I call you?")
         
-        if user_response.lower() == 'exit':
-            self.typing_effect("Thanks for stopping by! Have a great day! 👋")
-            return
-
         user_response = input("➡️ ").strip()
         self.current_user = self.extract_name(user_response)
         # Check for past recommendations
@@ -83,7 +79,10 @@ class TravelAgent:
         if past_recommendations:
             self.generate_personalized_recommendation()
             print("Hope you like this AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        self.generate_initial_recommendation()
+        
+        else:
+            self.generate_initial_recommendation()
+
         # Extract destination from recommendation for questions
         destination = self.current_recommendation.split(':')[0].strip()
         self.ask_about_recommendation(destination)
@@ -168,48 +167,33 @@ class TravelAgent:
         - Group: {self.trip_details['companions']}
         - Budget: {self.trip_details['budget']}
         
-        Return a JSON object with:
-        {{
-            "destination": "CityName, Country: One-line description",
-            "explanation": "2-3 concise sentences explaining why this destination matches their trip details"
-        }}"""
+        Response format: CityName, Country: One-line description"""
         
         try:
             response = self.recommendation_llm.invoke([HumanMessage(content=prompt)])
             content = response.content.strip()
-            
-            # Clean up the response
-            if content.startswith('```') and content.endswith('```'):
-                content = content[3:-3]
-            if content.startswith('json'):
-                content = content[4:]
-            content = content.strip()
-            
-            result = json.loads(content)
-            self.current_recommendation = result['destination']
+            self.current_recommendation = content  # Set the current recommendation
             
             # Store recommendation in database
             self.trip_db.store_recommendation(
                 self.current_user,
-                result['destination'],
-                result['explanation'],
+                self.current_recommendation,
+                "Recommendation based on trip details",
                 self.trip_details
             )
             
-            # Display recommendation and explanation
             self.typing_effect(f"\n✨ {self.current_recommendation}")
-            self.typing_effect(f"\n💡 {result['explanation']}")
             
-        except Exception:
+        except Exception as e:
+            print(f"Error: {e}")  # For debugging
             self.current_recommendation = "Barcelona, Spain: Vibrant city with perfect blend of culture, cuisine, and beaches."
             self.typing_effect(f"\n✨ {self.current_recommendation}")
-            self.typing_effect("\n💡 This destination offers a great mix of activities for any group size and budget, with excellent weather and cultural experiences.")
             
             # Store fallback recommendation
             self.trip_db.store_recommendation(
                 self.current_user,
                 self.current_recommendation,
-                "This destination offers a great mix of activities for any group size and budget, with excellent weather and cultural experiences.",
+                "This destination offers a great mix of activities for any group size and budget.",
                 self.trip_details
             )
 
@@ -612,6 +596,7 @@ class TravelAgent:
             4. Look for expressions of satisfaction, completion, or disinterest
             
             Examples:
+            "No" -> "TRUE"
             "I'm done" -> "TRUE"
             "That's all I need" -> "TRUE"
             "What about the weather?" -> "FALSE"
@@ -687,7 +672,7 @@ class TravelAgent:
         for rec in recommendations[:2]:  # Focus on last 2 recommendations
             destination = rec['destination'].split(':')[0].strip()
             
-            self.typing_effect(f"\nHow was your trip to {destination}? What did you love and what could have been better?")
+            self.typing_effect(f"\nHow did you like our trip recommendation to {destination}? What did you love and what could have been better?")
             feedback = input("➡️ ").strip()
             
             # Analyze feedback using LLM
