@@ -60,21 +60,33 @@ class TravelAgent:
         
         user_response = input("➡️ ").strip()
         self.current_user = self.extract_name(user_response)
+        # Check for past recommendations
+        past_recommendations = self.trip_db.get_user_recommendations(self.current_user)
+        if past_recommendations:
+            self.collect_past_trip_feedback(past_recommendations)
+            self.typing_effect(f""" Let's plan another perfect trip, {self.current_user}! Please tell me:
+                • When you'd like to travel
+                • Who you'll be traveling with
+                • What's your budget (low/medium/high)""")
         
         # Collect basic trip details
-        self.typing_effect(f"""Lovely to meet you, {self.current_user}! 🌟 
-Let's plan your perfect trip. Please tell me:
-• When you'd like to travel
-• Who you'll be traveling with
-• What's your budget (low/medium/high)""")
+        else:
+            self.typing_effect(f"""Lovely to meet you, {self.current_user}! 🌟 
+                Let's plan your perfect trip. Please tell me:
+                • When you'd like to travel
+                • Who you'll be traveling with
+                • What's your budget (low/medium/high)""")
 
         self.collect_trip_details()
+        if past_recommendations:
+            self.generate_personalized_recommendation()
+            print("Hope you like this AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
         self.generate_initial_recommendation()
         # Extract destination from recommendation for questions
         destination = self.current_recommendation.split(':')[0].strip()
         self.ask_about_recommendation(destination)
         self.collect_preferences()
-        self.generate_personalized_recommendation()
+
 
     def collect_trip_details(self):
         """Collect all necessary trip details"""
@@ -174,6 +186,14 @@ Let's plan your perfect trip. Please tell me:
             result = json.loads(content)
             self.current_recommendation = result['destination']
             
+            # Store recommendation in database
+            self.trip_db.store_recommendation(
+                self.current_user,
+                result['destination'],
+                result['explanation'],
+                self.trip_details
+            )
+            
             # Display recommendation and explanation
             self.typing_effect(f"\n✨ {self.current_recommendation}")
             self.typing_effect(f"\n💡 {result['explanation']}")
@@ -182,6 +202,14 @@ Let's plan your perfect trip. Please tell me:
             self.current_recommendation = "Barcelona, Spain: Vibrant city with perfect blend of culture, cuisine, and beaches."
             self.typing_effect(f"\n✨ {self.current_recommendation}")
             self.typing_effect("\n💡 This destination offers a great mix of activities for any group size and budget, with excellent weather and cultural experiences.")
+            
+            # Store fallback recommendation
+            self.trip_db.store_recommendation(
+                self.current_user,
+                self.current_recommendation,
+                "This destination offers a great mix of activities for any group size and budget, with excellent weather and cultural experiences.",
+                self.trip_details
+            )
 
     def collect_preferences(self):
         """Collect user preferences through natural conversation"""
@@ -356,30 +384,88 @@ Let's plan your perfect trip. Please tell me:
             return {'activities': [], 'climate': [], 'travel_style': []}
 
     def generate_personalized_recommendation(self):
-        """Generate personalized recommendation based on collected preferences"""
-        if not any(self.user_preferences.values()):
-            return
+        """Generate personalized recommendation based on all user data"""
+        # Get user's past trips and activities
+        destinations, activities = self.trip_db.get_user_trips(self.current_user)
         
-        self.typing_effect("\nThanks for sharing your travel experiences! Based on what you've told me, I think you might enjoy this destination...")
+        # Get feedback from past recommended trips
+        past_feedback = self.trip_db.get_user_feedback(self.current_user)
+        
+        # Prepare feedback summary
+        preferred_aspects = []
+        disliked_aspects = []
+        for feedback in past_feedback:
+            preferred_aspects.extend(feedback['preferred'])
+            disliked_aspects.extend(feedback['hated'])
+        
+        self.typing_effect("\nBased on your travel history and preferences, I think you might enjoy this destination...")
         
         prompt = f"""Recommend ONE destination considering:
-        Trip Details:
+        
+        User's Past Experiences:
+        - Previous Destinations: {', '.join(destinations) if destinations else 'None'}
+        - Activities Enjoyed: {', '.join(activities) if activities else 'None'}
+        
+        User's Preferences:
+        - Things They Like: {', '.join(preferred_aspects) if preferred_aspects else 'None'}
+        - Things to Avoid: {', '.join(disliked_aspects) if disliked_aspects else 'None'}
+        
+        Current Trip Details:
         - Time: {self.trip_details['time_period']}
         - Group: {self.trip_details['companions']}
         - Budget: {self.trip_details['budget']}
         
-        User Preferences:
-        - Favorite Activities: {', '.join(self.user_preferences['activities'])}
-        - Preferred Climate: {', '.join(self.user_preferences['climate'])}
-        - Travel Style: {', '.join(self.user_preferences['travel_style'])}
+        Return a JSON object with:
+        {{
+            "destination": "CityName, Country: One-line description",
+            "explanation": "2-3 concise sentences explaining why this matches their preferences and avoids their dislikes"
+        }}
         
-        Response format: CityName, Country: One-line description"""
+        Rules:
+        1. Do NOT recommend any of their past destinations
+        2. Avoid destinations that might feature aspects they disliked
+        3. Prioritize destinations that offer activities and aspects they enjoyed
+        4. Consider their current trip details
+        """
         
         try:
             response = self.recommendation_llm.invoke([HumanMessage(content=prompt)])
-            self.typing_effect(f"\n✨ {response.content.strip()}")
+            content = response.content.strip()
+            
+            # Clean up the response
+            if content.startswith('```') and content.endswith('```'):
+                content = content[3:-3]
+            if content.startswith('json'):
+                content = content[4:]
+            content = content.strip()
+            
+            result = json.loads(content)
+            
+            # Store recommendation in database
+            self.trip_db.store_recommendation(
+                self.current_user,
+                result['destination'],
+                result['explanation'],
+                self.trip_details
+            )
+            
+            self.typing_effect(f"\n✨ {result['destination']}")
+            self.typing_effect(f"\n💡 {result['explanation']}")
+            
         except Exception:
-            self.typing_effect("\n✨ Kyoto, Japan: Cultural destination with perfect blend of traditional experiences and modern comfort.")
+            fallback_destination = "Kyoto, Japan: Cultural destination with perfect blend of traditional experiences and modern comfort."
+            fallback_explanation = "This destination offers a unique cultural experience while maintaining modern comforts, suitable for various group sizes and budgets."
+            
+            self.typing_effect(f"\n✨ {fallback_destination}")
+            self.typing_effect(f"\n💡 {fallback_explanation}")
+            
+            # Store fallback recommendation
+            self.trip_db.store_recommendation(
+                self.current_user,
+                fallback_destination,
+                fallback_explanation,
+                self.trip_details
+            )
 
     def generate_trip_recommendation(self):
         """Generate recommendation based on user's trip history"""
@@ -401,7 +487,11 @@ Let's plan your perfect trip. Please tell me:
         - Group: {self.trip_details['companions']}
         - Budget: {self.trip_details['budget']}
         
-        Response format: CityName, Country: One-line description
+        Return a JSON object with:
+        {{
+            "destination": "CityName, Country: One-line description",
+            "explanation": "2-3 concise sentences explaining why this destination matches their preferences and trip details"
+        }}
         
         Rules:
         1. Do NOT recommend any of their past destinations
@@ -411,9 +501,42 @@ Let's plan your perfect trip. Please tell me:
         
         try:
             response = self.recommendation_llm.invoke([HumanMessage(content=prompt)])
-            self.typing_effect(f"\n✨ {response.content.strip()}")
+            content = response.content.strip()
+            
+            # Clean up the response
+            if content.startswith('```') and content.endswith('```'):
+                content = content[3:-3]
+            if content.startswith('json'):
+                content = content[4:]
+            content = content.strip()
+            
+            result = json.loads(content)
+            
+            # Store recommendation in database
+            self.trip_db.store_recommendation(
+                self.current_user,
+                result['destination'],
+                result['explanation'],
+                self.trip_details
+            )
+            
+            self.typing_effect(f"\n✨ {result['destination']}")
+            self.typing_effect(f"\n💡 {result['explanation']}")
+            
         except Exception:
-            self.typing_effect("\n✨ Kyoto, Japan: Cultural destination with perfect blend of traditional experiences and modern comfort.")
+            fallback_destination = "Kyoto, Japan: Cultural destination with perfect blend of traditional experiences and modern comfort."
+            fallback_explanation = "This destination offers a unique cultural experience while maintaining modern comforts, suitable for various group sizes and budgets."
+            
+            self.typing_effect(f"\n✨ {fallback_destination}")
+            self.typing_effect(f"\n💡 {fallback_explanation}")
+            
+            # Store fallback recommendation
+            self.trip_db.store_recommendation(
+                self.current_user,
+                fallback_destination,
+                fallback_explanation,
+                self.trip_details
+            )
 
     def typing_effect(self, text):
         """Print with typing effect"""
@@ -460,7 +583,6 @@ Let's plan your perfect trip. Please tell me:
     def ask_about_recommendation(self, destination: str):
         """Allow user to ask questions about the recommended destination"""
         self.typing_effect(f"\nWould you like to know more about {destination}? Feel free to ask any questions about activities, culture, or practical details!")
-        self.typing_effect("You can say 'done', 'no more questions', or 'that's all' when you're finished.")
         
         # Initialize conversation history
         conversation_history = []
@@ -498,6 +620,7 @@ Let's plan your perfect trip. Please tell me:
                 
                 if end_response.content.strip().upper() == "TRUE":
                     self.typing_effect("\nGreat! Let's continue with planning your trip...")
+                    self.typing_effect(f"\n🌟 Happy travels to {destination}! I hope you have an amazing adventure! 🌟")
                     break
                 
                 # Create messages for the conversation
@@ -544,6 +667,73 @@ Let's plan your perfect trip. Please tell me:
             formatted.append(f"A: {exchange['answer']}")
         
         return "\n".join(formatted)
+
+    def collect_past_trip_feedback(self, recommendations: List[dict]):
+        """Collect feedback about past recommended trips"""
+        self.typing_effect(f"\nI see you've been here before! Let me ask you about your past trips...")
+        
+        feedback_collected = False
+        for rec in recommendations[:2]:  # Focus on last 2 recommendations
+            destination = rec['destination'].split(':')[0].strip()
+            
+            self.typing_effect(f"\nHow was your trip to {destination}? What did you love and what could have been better?")
+            feedback = input("➡️ ").strip()
+            
+            # Analyze feedback using LLM
+            feedback_analysis = self.analyze_trip_feedback(feedback)
+            
+            # Store feedback in database
+            self.trip_db.store_trip_feedback(
+                self.current_user,
+                destination,
+                feedback_analysis['preferred'],
+                feedback_analysis['hated']
+            )
+            feedback_collected = True
+            
+            # Ask if they want to discuss another past trip
+            if rec != recommendations[-1]:
+                self.typing_effect("\nWould you like to tell me about another past trip?")
+                if input("➡️ ").strip().lower() in ['no', 'nope', 'n']:
+                    break
+        
+        if feedback_collected:
+            self.typing_effect("\nThank you for sharing your travel experiences! This will help me provide better recommendations for your next adventure. 🌟")
+
+    def analyze_trip_feedback(self, feedback: str) -> dict:
+        """Analyze user feedback about a past trip"""
+        prompt = f"""Analyze this trip feedback: '{feedback}'
+        
+        Return ONLY a JSON object with:
+        {{
+            "preferred": ["list of things they loved or preferred about the trip"],
+            "hated": ["list of things they disliked or hated about the trip"]
+        }}
+        
+        Example:
+        Input: "I loved the food and culture, but hated the crowds. Would prefer more quiet spots."
+        Output:
+        {{
+            "preferred": ["food", "culture", "quiet spots"],
+            "hated": ["crowds"]
+        }}
+        """
+        
+        try:
+            response = self.conversation_llm.invoke([
+                SystemMessage(content="You are a feedback analyzer. Return a JSON object with lists of preferred and hated aspects."),
+                HumanMessage(content=prompt)
+            ])
+            
+            content = response.content.strip()
+            if content.startswith('```') and content.endswith('```'):
+                content = content[3:-3]
+            if content.startswith('json'):
+                content = content[4:]
+            
+            return json.loads(content.strip())
+        except Exception:
+            return {"preferred": [], "hated": []}
 
 # Run the agent
 if __name__ == "__main__":
