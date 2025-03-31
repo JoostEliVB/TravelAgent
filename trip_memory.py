@@ -49,6 +49,9 @@ class TravelAgent:
             'climate': [],
             'travel_style': []
         }
+        
+        # Store current recommendation
+        self.current_recommendation = None
 
     def start_conversation(self):
         """Start the conversation and collect all information"""
@@ -67,6 +70,9 @@ Let's plan your perfect trip. Please tell me:
 
         self.collect_trip_details()
         self.generate_initial_recommendation()
+        # Extract destination from recommendation for questions
+        destination = self.current_recommendation.split(':')[0].strip()
+        self.ask_about_recommendation(destination)
         self.collect_preferences()
         self.generate_personalized_recommendation()
 
@@ -152,9 +158,11 @@ Let's plan your perfect trip. Please tell me:
         
         try:
             response = self.recommendation_llm.invoke([HumanMessage(content=prompt)])
-            self.typing_effect(f"\n✨ {response.content.strip()}")
+            self.current_recommendation = response.content.strip()
+            self.typing_effect(f"\n✨ {self.current_recommendation}")
         except Exception:
-            self.typing_effect("\n✨ Barcelona, Spain: Vibrant city with perfect blend of culture, cuisine, and beaches.")
+            self.current_recommendation = "Barcelona, Spain: Vibrant city with perfect blend of culture, cuisine, and beaches."
+            self.typing_effect(f"\n✨ {self.current_recommendation}")
 
     def collect_preferences(self):
         """Collect user preferences through natural conversation"""
@@ -429,6 +437,93 @@ Let's plan your perfect trip. Please tell me:
             
         except Exception:
             return "friend"
+
+    def ask_about_recommendation(self, destination: str):
+        """Allow user to ask questions about the recommended destination"""
+        self.typing_effect(f"\nWould you like to know more about {destination}? Feel free to ask any questions about activities, culture, or practical details!")
+        self.typing_effect("You can say 'done', 'no more questions', or 'that's all' when you're finished.")
+        
+        # Initialize conversation history
+        conversation_history = []
+        
+        while True:
+            user_question = input("➡️ ").strip()
+            
+            # Use LLM to determine if user wants to end conversation
+            end_conversation_prompt = f"""Determine if the user wants to end the conversation about {destination}.
+            User input: '{user_question}'
+            
+            Rules:
+            1. Return ONLY "TRUE" if the user wants to end the conversation
+            2. Return ONLY "FALSE" if the user wants to continue asking questions
+            3. Consider natural language variations of ending the conversation
+            4. Look for expressions of satisfaction, completion, or disinterest
+            
+            Examples:
+            "I'm done" -> "TRUE"
+            "That's all I need" -> "TRUE"
+            "What about the weather?" -> "FALSE"
+            "No more questions" -> "TRUE"
+            "I'm satisfied" -> "TRUE"
+            "Tell me more about the food" -> "FALSE"
+            "I think I'll pass" -> "TRUE"
+            "No thanks" -> "TRUE"
+            """
+            
+            try:
+                end_response = self.conversation_llm.invoke([
+                    SystemMessage(content="You are a conversation flow analyzer. Return ONLY TRUE or FALSE."),
+                    HumanMessage(content=end_conversation_prompt)
+                ])
+                
+                if end_response.content.strip().upper() == "TRUE":
+                    self.typing_effect("\nGreat! Let's continue with planning your trip...")
+                    break
+                
+                # Create messages for the conversation
+                messages = [
+                    SystemMessage(content="You are a knowledgeable travel advisor. Provide specific, helpful information about destinations."),
+                    HumanMessage(content=f"""Answer this question about {destination}: '{user_question}'
+
+                    Consider:
+                    - Time period: {self.trip_details['time_period']}
+                    - Travel companions: {self.trip_details['companions']}
+                    - Budget: {self.trip_details['budget']}
+
+                    Previous conversation:
+                    {self._format_conversation_history(conversation_history)}
+
+                    Provide a clear, concise answer focusing on the specific question asked.
+                    """)
+                ]
+                
+                response = self.conversation_llm.invoke(messages)
+                answer = response.content.strip()
+                self.typing_effect(f"\n{answer}")
+                
+                # Update conversation history
+                conversation_history.append({
+                    'question': user_question,
+                    'answer': answer
+                })
+                # Keep only the last two exchanges
+                if len(conversation_history) > 2:
+                    conversation_history.pop(0)
+                    
+            except Exception:
+                self.typing_effect("\nI apologize, but I'm having trouble processing your input. Would you like to ask something else about the destination?")
+
+    def _format_conversation_history(self, history: List[Dict[str, str]]) -> str:
+        """Format conversation history for the prompt"""
+        if not history:
+            return "No previous conversation."
+            
+        formatted = []
+        for exchange in history:
+            formatted.append(f"Q: {exchange['question']}")
+            formatted.append(f"A: {exchange['answer']}")
+        
+        return "\n".join(formatted)
 
 # Run the agent
 if __name__ == "__main__":
