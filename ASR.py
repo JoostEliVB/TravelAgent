@@ -3,9 +3,10 @@ import numpy as np
 import queue
 import sys
 import time
+import scipy.io.wavfile as wavfile
 import speech_recognition as sr
-import io
-import wave
+from transformers import pipeline
+
 
 def record_until_silence(fs=16000, threshold=500, silence_duration=1.0, max_recording=30.0):
     """
@@ -18,7 +19,7 @@ def record_until_silence(fs=16000, threshold=500, silence_duration=1.0, max_reco
       max_recording (float): Maximum recording duration in seconds.
 
     Returns:
-      numpy.ndarray: Recorded audio data
+      (numpy.ndarray, int): Recorded audio and sample rate.
     """
     q = queue.Queue()
 
@@ -41,54 +42,72 @@ def record_until_silence(fs=16000, threshold=500, silence_duration=1.0, max_reco
 
             if data is not None:
                 audio_data.append(data)
+                # Calculate the mean absolute amplitude
                 amplitude = np.abs(data).mean()
+                # If the amplitude is below threshold, increment silence duration
                 if amplitude < threshold:
                     silence_counter += len(data) / fs
                 else:
                     silence_counter = 0.0
 
+            # Stop if silence is long enough or if max recording duration is reached
             if silence_counter >= silence_duration or (time.time() - start_time) >= max_recording:
                 break
 
-    return np.concatenate(audio_data, axis=0)
+    audio = np.concatenate(audio_data, axis=0)
+    return audio, fs
 
-def transcribe_audio(audio_data, fs=16000):
-    """
-    Transcribe audio data directly without saving to file.
-    
-    Parameters:
-        audio_data (numpy.ndarray): Audio data to transcribe
-        fs (int): Sample rate of the audio
-    
-    Returns:
-        str: Transcribed text
-    """
-    # Convert audio data to WAV format in memory
-    byte_io = io.BytesIO()
-    with wave.open(byte_io, 'wb') as wav_file:
-        wav_file.setnchannels(1)
-        wav_file.setsampwidth(2)  # 16-bit audio
-        wav_file.setframerate(fs)
-        wav_file.writeframes(audio_data.tobytes())
-    
-    # Create recognizer and transcribe
+
+def save_audio(filename, audio, fs):
+    """Save the recorded audio to a WAV file."""
+    wavfile.write(filename, fs, audio)
+    print("Recording complete. Saved to", filename)
+
+
+def speech_to_text_from_file(filename="output.wav"):
+    """Transcribe speech from a WAV file using Google Speech Recognition."""
     r = sr.Recognizer()
-    byte_io.seek(0)
-    with sr.AudioFile(byte_io) as source:
+    with sr.AudioFile(filename) as source:
         audio = r.record(source)
-        try:
-            text = r.recognize_google(audio)
-            print("Transcription:", text)
-            return text
-        except sr.UnknownValueError:
-            print("Could not understand the audio")
-            return None
-        except sr.RequestError as e:
-            print(f"Could not request results; {e}")
-            return None
+    try:
+        text = r.recognize_google(audio)
+        print("Transcription:", text)
+        return text
+    except Exception as e:
+        print("Error during transcription:", e)
+        return ""
+
+
+def recognize_emotion(text):
+    """
+    Recognize emotion from text using a transformer-based model.
+    The model returns scores for several emotions.
+    """
+    # Initialize the emotion classifier pipeline
+    classifier = pipeline("text-classification",
+                          model="j-hartmann/emotion-english-distilroberta-base",
+                          top_k=None)  # Get all scores
+    results = classifier(text)
+
+    # Find the label with the highest score
+    if results and isinstance(results, list):
+        # If the results are in a nested list, use the first element
+        if isinstance(results[0], list):
+            results = results[0]
+        # Find the label with the highest score
+        best = max(results, key=lambda x: x['score'])
+        print("Detected emotion:", best['label'], "with confidence", best['score'])
+    else:
+        print("Could not detect emotion.")
+
 
 if __name__ == "__main__":
     # Record until silence is detected
-    audio = record_until_silence()
-    # Transcribe the recorded audio directly
-    transcription = transcribe_audio(audio)
+    audio, fs = record_until_silence()
+    # Save the audio to a file
+    save_audio("output.wav", audio, fs)
+    # Transcribe the recorded audio
+    transcription = speech_to_text_from_file("output.wav")
+    # If transcription is successful, perform emotion recognition on the text
+    if transcription:
+        recognize_emotion(transcription)
