@@ -1,7 +1,5 @@
 from collections import Counter
 from datetime import datetime
-import spacy
-from textblob import TextBlob
 import random
 import time
 from collections import defaultdict
@@ -56,8 +54,12 @@ class TravelAgent:
     def start_conversation(self):
         """Start the conversation and collect all information"""
         # Initial greeting and name collection
-        self.typing_effect("Hi there! 👋 I'm your friendly travel companion, and I'd love to help you plan your perfect getaway. What should I call you?")
+        self.typing_effect("Hi there! 👋 I'm your friendly travel companion, and I'd love to help you plan your perfect getaway. What should I call you? (Type 'exit' at any time to end our conversation)")
         
+        if user_response.lower() == 'exit':
+            self.typing_effect("Thanks for stopping by! Have a great day! 👋")
+            return
+
         user_response = input("➡️ ").strip()
         self.current_user = self.extract_name(user_response)
         # Check for past recommendations
@@ -262,10 +264,17 @@ class TravelAgent:
                 destination_activities.extend(new_prefs['activities'])
 
         
-        # Update database with new trip information
+        # Update database with new trip information by appending new data
         if destination:
-            self.trip_db.update_user_trips(self.current_user, [destination], destination_activities)
-
+            # Get existing trips and activities
+            existing_destinations, existing_activities = self.trip_db.get_user_trips(self.current_user)
+            
+            # Append new destination and activities to existing ones
+            all_destinations = existing_destinations + [destination]
+            all_activities = existing_activities + destination_activities
+            
+            # Update database with combined data
+            self.trip_db.update_user_trips(self.current_user, all_destinations, all_activities)
 
     def validate_and_extract_destination(self, user_input: str) -> Dict[str, Any]:
         """Validate user input and extract destination using LLM"""
@@ -426,6 +435,8 @@ class TravelAgent:
         2. Avoid destinations that might feature aspects they disliked
         3. Prioritize destinations that offer activities and aspects they enjoyed
         4. Consider their current trip details
+
+        Also give brief explanation on why this destination is a good fit for the user
         """
         
         try:
