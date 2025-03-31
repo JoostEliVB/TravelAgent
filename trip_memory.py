@@ -154,15 +154,34 @@ Let's plan your perfect trip. Please tell me:
         - Group: {self.trip_details['companions']}
         - Budget: {self.trip_details['budget']}
         
-        Response format: CityName, Country: One-line description"""
+        Return a JSON object with:
+        {{
+            "destination": "CityName, Country: One-line description",
+            "explanation": "2-3 concise sentences explaining why this destination matches their trip details"
+        }}"""
         
         try:
             response = self.recommendation_llm.invoke([HumanMessage(content=prompt)])
-            self.current_recommendation = response.content.strip()
+            content = response.content.strip()
+            
+            # Clean up the response
+            if content.startswith('```') and content.endswith('```'):
+                content = content[3:-3]
+            if content.startswith('json'):
+                content = content[4:]
+            content = content.strip()
+            
+            result = json.loads(content)
+            self.current_recommendation = result['destination']
+            
+            # Display recommendation and explanation
             self.typing_effect(f"\n✨ {self.current_recommendation}")
+            self.typing_effect(f"\n💡 {result['explanation']}")
+            
         except Exception:
             self.current_recommendation = "Barcelona, Spain: Vibrant city with perfect blend of culture, cuisine, and beaches."
             self.typing_effect(f"\n✨ {self.current_recommendation}")
+            self.typing_effect("\n💡 This destination offers a great mix of activities for any group size and budget, with excellent weather and cultural experiences.")
 
     def collect_preferences(self):
         """Collect user preferences through natural conversation"""
@@ -468,6 +487,7 @@ Let's plan your perfect trip. Please tell me:
             "Tell me more about the food" -> "FALSE"
             "I think I'll pass" -> "TRUE"
             "No thanks" -> "TRUE"
+            "what can I do" -> "FALSE"
             """
             
             try:
