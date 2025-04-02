@@ -286,8 +286,7 @@ def check_for_new_info(state: AgentState) -> AgentState:
                 state.extracted_info = extracted_info
                 
                 # Update user profile
-                if not is_new_user:
-                    state = update_user_profile(state, extracted_info)
+                state = update_user_profile(state, extracted_info)
                 
                 # Store in user-specific vector store
                 user_store = vectorstore.get_store(state.user_id)
@@ -346,12 +345,12 @@ def generate_response(state: AgentState) -> AgentState:
     # Get chat history from user-specific memory buffer
     chat_history = user_memory.load_memory_variables({})["chat_history"]
     
-    # Only use user profile and memories for existing users
+    # Get user profile
+    user_profile = state.user_profile
+    user_profile_text = "\n".join([f"{k}: {v}" for k, v in user_profile.items()])  
+
+    # Only use memories for existing users
     if not is_new_user:
-        # Get user profile
-        user_profile = state.user_profile
-        user_profile_text = "\n".join([f"{k}: {v}" for k, v in user_profile.items()])
-        
         # Set k to min of total docs or 3
         k = min(3, max(1, total_docs))
         
@@ -362,11 +361,10 @@ def generate_response(state: AgentState) -> AgentState:
         )
         memory_text = "\n".join([doc.page_content for doc in relevant_memories]) if relevant_memories else ""
     else:
-        user_profile_text = ""
         memory_text = ""
-        # For new users, only keep last two messages in chat history
-        if len(chat_history) > 2:
-            chat_history = chat_history[-2:]
+        # For new users, only keep last five  messages in chat history
+        if len(chat_history) > 5:
+            chat_history = chat_history[-5:]
         print("Note: New user session - only storing new memories")
     
     # Generate response using the agent chain
