@@ -231,7 +231,7 @@ def get_user_memory(user_id: str) -> ConversationBufferMemory:
     """Get or create a memory buffer for a specific user."""
     if user_id not in user_memories:
         user_memories[user_id] = ConversationBufferMemory(
-            k=2,  # Keep only the last 2 interactions
+            k=5,  # Keep only the last 2 interactions
             return_messages=True,
             memory_key="chat_history"
         )
@@ -361,6 +361,7 @@ def generate_response(state: AgentState) -> AgentState:
         )
         memory_text = "\n".join([doc.page_content for doc in relevant_memories]) if relevant_memories else ""
     else:
+        #delete memory input for new users
         memory_text = ""
         # For new users, only keep last five  messages in chat history
         if len(chat_history) > 5:
