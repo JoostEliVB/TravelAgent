@@ -1,4 +1,5 @@
 langchain>=0.1.0
+<<<<<<< HEAD
 langgraph>=0.0.10
 chromadb>=0.4.22
 python-dotenv>=1.0.0
@@ -6,3 +7,13 @@ pydantic>=2.5.2
 google-cloud-texttospeech>=2.14.1
 playsound>=1.3.0
 pygame>=2.5.2 
+=======
+langchain-community>=0.0.10
+langchain-core>=0.1.10
+langchain-ollama>=0.0.1
+SpeechRecognition>=3.10.0
+pyaudio>=0.2.13
+torch>=2.0.0
+transformers>=4.30.0
+numpy<2.0.0 
+>>>>>>> 4d29a4b576088d75ab34ad6621e09f3f7d363c44

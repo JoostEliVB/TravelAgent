@@ -2,7 +2,10 @@ from google.cloud import texttospeech
 import os
 from playsound import playsound
 import tempfile
+<<<<<<< HEAD
 import pygame
+=======
+>>>>>>> 4d29a4b576088d75ab34ad6621e09f3f7d363c44
 
 class TextToSpeech:
     def __init__(self, credentials_path="API_key.json"):
@@ -12,9 +15,12 @@ class TextToSpeech:
         # Initialize the client
         self.client = texttospeech.TextToSpeechClient()
         
+<<<<<<< HEAD
         # Initialize pygame mixer for audio state tracking
         pygame.mixer.init()
         
+=======
+>>>>>>> 4d29a4b576088d75ab34ad6621e09f3f7d363c44
         # Set default voice parameters
         self.voice = texttospeech.VoiceSelectionParams(
             language_code="en-US",
@@ -24,6 +30,7 @@ class TextToSpeech:
         
         # Set default audio configuration
         self.audio_config = texttospeech.AudioConfig(
+<<<<<<< HEAD
             audio_encoding=texttospeech.AudioEncoding.LINEAR16
         )
         
@@ -46,6 +53,12 @@ class TextToSpeech:
         # Stop any currently playing audio
         self.stop_current_audio()
         
+=======
+            audio_encoding=texttospeech.AudioEncoding.MP3
+        )
+
+    def play(self, text):
+>>>>>>> 4d29a4b576088d75ab34ad6621e09f3f7d363c44
         # Set the text input to be synthesized
         synthesis_input = texttospeech.SynthesisInput(text=text)
 
@@ -57,6 +70,7 @@ class TextToSpeech:
         )
 
         # Create a temporary file
+<<<<<<< HEAD
         with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
             temp_file.write(response.audio_content)
             temp_path = temp_file.name
@@ -74,6 +88,17 @@ class TextToSpeech:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             self.current_audio = None
+=======
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
+            temp_file.write(response.audio_content)
+            temp_path = temp_file.name
+
+        # Play the audio
+        playsound(temp_path)
+        
+        # Clean up the temporary file
+        os.remove(temp_path)
+>>>>>>> 4d29a4b576088d75ab34ad6621e09f3f7d363c44
 
 # Example usage
 if __name__ == "__main__":

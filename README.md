@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Travel Agent with Memory and Voice Interface
 
 A conversational travel agent that uses LangChain and LangGraph to provide personalized travel recommendations. The agent features persistent memory, voice input/output capabilities, and a user-friendly Streamlit interface.
@@ -99,3 +100,27 @@ Feel free to submit issues and enhancement requests!
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details. 
+=======
+# DSAIT4065_TravelAgent
+
+very basic agent is available in testing.ipynb. Short-term memory present with token-trimmer.
+Using Ollama llama3:latest model for llm, LangChain framework for agent interaction and (eventually) LangGraph for memory framework.
+
+Download Ollama and run command `ollama pull llama3.2` to download the llm (4.7GB)
+
+reqs:
+
+```
+pip install langchain-core langgraph>0.2.27
+pip install -U langchain-ollama
+```
+
+## Setup Text-To-Speech
+
+1. Get your Google Cloud API credentials:
+   - Go to Google Cloud Console
+   - Create a service account
+   - Download the JSON key file
+2. Rename the key file to `API_key.json`
+3. Place it in the project root directory
+>>>>>>> 4d29a4b576088d75ab34ad6621e09f3f7d363c44
