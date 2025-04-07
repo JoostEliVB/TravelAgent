@@ -96,6 +96,6 @@ streamlit run app.py
 
 Feel free to submit issues and enhancement requests!
 
-## License
+## Privacy
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+Be aware that the agent makes use of OpenAI services and Google services. Information entered into the travel agent could thus be collected by OpenAI or Google.
