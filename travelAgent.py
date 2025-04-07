@@ -430,7 +430,7 @@ def run_conversation(user_input: str, user_id: str = None) -> Tuple[str, str]:
         active_sessions[user_id] = state
         # Initialize fresh memory for new user
         user_memories[user_id] = ConversationBufferMemory(
-            k=2,
+            k=5,
             return_messages=True,
             memory_key="chat_history"
         )
